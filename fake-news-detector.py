@@ -2,22 +2,23 @@
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split 
-from sklearn.linear_model import LogisticRegression 
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 import seaborn as sns
 import matplotlib.pyplot as plt
+import joblib # added to save and load artifacts
 
 # -----------------------------
 # 1. Load and Prepare the Data
 # -----------------------------
-true_df = pd.read_csv('C:\\Users\\music\\fake-news-detector\\Data\\True.csv')
-fake_df = pd.read_csv('C:\\Users\\music\\fake-news-detector\\Data\\Fake.csv')
+true_df = pd.read_csv('File Path\True.csv')
+fake_df = pd.read_csv('File path\Fake.csv')
 
 # Add labels
 true_df['label'] = 1  # Real
-fake_df['label'] = 0  # Fake 
+fake_df['label'] = 0  # Fake
 
 # Balance both datasets
 min_len = min(len(true_df), len(fake_df))
@@ -68,6 +69,12 @@ print("Vectorized data shape:", X_train_vec.shape, X_test_vec.shape)
 # -----------------------------
 model = LogisticRegression(max_iter=2000, C=2.0)
 model.fit(X_train_vec, y_train)
+
+
+# Save the trained model and vectorizer
+joblib.dump(vectorizer, "vectorizer.joblib")
+joblib.dump(model, "fake_news_model.joblib")
+print("Saved vectorizer.joblib and fake_news_model.joblib")
 
 # -----------------------------
 # 6. Evaluate the Model
