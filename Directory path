@@ -1,0 +1,14 @@
+fake-news-web/
+│
+├── backend/
+│   ├── app.py               # Flask app
+│   ├── train.py             # Training script
+│   ├── vectorizer.joblib
+│   ├── fake_news_model.joblib
+│   └── uploads/             # Upload folder (auto-created)
+│
+├── templates/
+│   ├── index.html
+│
+├── requirements.txt         # Python dependencies
+└── README.md
