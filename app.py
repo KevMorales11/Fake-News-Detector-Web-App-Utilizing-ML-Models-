@@ -1,59 +1,98 @@
 import os
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
+from flask import Flask, request, jsonify, render_template
 import joblib
+import numpy as np
+from werkzeug.utils import secure_filename
+import PyPDF2
+import docx
+import webbrowser
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, '..', 'data')
+TEMPLATE_DIR = os.path.join(BASE_DIR, '..', 'templates')
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx'}
 
-# 1. Load CSVs with relative paths
-true_df = pd.read_csv(os.path.join(DATA_DIR, 'True.csv'))
-fake_df = pd.read_csv(os.path.join(DATA_DIR, 'Fake.csv'))
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# 2. Add labels
-true_df['label'] = 1  # Real
-fake_df['label'] = 0  # Fake
 
-# 3. Balance datasets
-min_len = min(len(true_df), len(fake_df))
-true_df = true_df.sample(min_len, random_state=42)
-fake_df = fake_df.sample(min_len, random_state=42)
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-# 4. Combine and shuffle
-df = pd.concat([true_df, fake_df], axis=0).sample(frac=1, random_state=42).reset_index(drop=True)
 
-# 5. Combine title+text if available
-if 'title' in df.columns:
-    df['content'] = df['title'].fillna('') + ' ' + df['text'].fillna('')
-else:
-    df['content'] = df['text'].fillna('')
+try:
+    vectorizer = joblib.load(os.path.join(BASE_DIR, 'vectorizer.joblib'))
+    model = joblib.load(os.path.join(BASE_DIR, 'fake_news_model.joblib'))
+except Exception as e:
+    print("Error loading model files. Please run train.py first.")
+    raise e
 
-X = df['content']
-y = df['label']
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# 6. Split dataset
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, stratify=y, random_state=42
-)
+def extract_text_from_file(filepath):
+    ext = filepath.rsplit('.', 1)[1].lower()
+    text = ''
+    if ext == 'txt':
+        with open(filepath, 'r', encoding='utf-8') as f:
+            text = f.read()
+    elif ext == 'pdf':
+        try:
+            reader = PyPDF2.PdfReader(filepath)
+            text = ' '.join([page.extract_text() or '' for page in reader.pages])
+        except Exception:
+            text = ''
+    elif ext in ('doc', 'docx'):
+        try:
+            doc = docx.Document(filepath)
+            text = ' '.join([p.text for p in doc.paragraphs])
+        except Exception:
+            text = ''
+    return text
 
-# 7. TF-IDF vectorization
-vectorizer = TfidfVectorizer(
-    stop_words='english',
-    max_df=0.7,
-    max_features=10000,
-    ngram_range=(1, 2)
-)
-X_train_vec = vectorizer.fit_transform(X_train)
-X_test_vec = vectorizer.transform(X_test)
+def predict_text(text):
+    X_vec = vectorizer.transform([text])
+    pred = model.predict(X_vec)[0]
+    prob = None
+    if hasattr(model, "predict_proba"):
+        prob = float(np.max(model.predict_proba(X_vec)[0]))
+    label = "Real News" if int(pred) == 1 else "Fake News"
+    resp = {"prediction": label}
+    if prob is not None:
+        resp["probability"] = prob
+    return resp
 
-# 8. Train logistic regression model
-model = LogisticRegression(max_iter=2000, C=2.0)
-model.fit(X_train_vec, y_train)
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-# 9. Save artifacts to backend directory
-joblib.dump(vectorizer, os.path.join(BASE_DIR, 'vectorizer.joblib'))
-joblib.dump(model, os.path.join(BASE_DIR, 'fake_news_model.joblib'))
+@app.route("/predict", methods=["POST"])
+def predict():
+    data = request.get_json(force=True)
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "Empty text"}), 400
+    return jsonify(predict_text(text))
 
-print("Model training complete and saved in backend folder!")
+@app.route("/upload", methods=["POST"])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '' or not allowed_file(file.filename):
+        return jsonify({"error": "File type not allowed"}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    text = extract_text_from_file(filepath)
+    if not text.strip():
+        return jsonify({"error": "No readable text in file"}), 400
+
+    return jsonify(predict_text(text))
+
+if __name__ == "__main__":
+    # Automatically opens browser
+    webbrowser.open("http://127.0.0.1:5000")
+    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=True)
