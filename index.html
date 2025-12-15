@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Fake News Detector</title>
   <style>
     /* --- Root Colors & Fonts --- */
@@ -13,7 +13,7 @@
       --accent-2: #2dbd6e;
       --muted: #6b7280;
       --danger: #e03d3d;
-      --glass: rgba(255,255,255,0.6);
+      --glass: rgba(255, 255, 255, 0.6);
       font-family: "Inter", sans-serif;
     }
 
@@ -32,18 +32,22 @@
       background: var(--card);
       border-radius: 14px;
       padding: 2rem;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
 
-    h1 { margin-top: 0; }
-    p.lead { color: var(--muted); }
+    h1 {
+      margin-top: 0;
+    }
+    p.lead {
+      color: var(--muted);
+    }
 
     textarea {
       width: 100%;
       min-height: 150px;
       padding: 1rem;
       border-radius: 10px;
-      border: 1px solid rgba(0,0,0,0.1);
+      border: 1px solid rgba(0, 0, 0, 0.1);
       resize: vertical;
       font-size: 1rem;
     }
@@ -61,8 +65,15 @@
       font-weight: 600;
     }
 
-    button.primary { background: var(--accent); color: white; }
-    button.secondary { background: var(--glass); color: var(--accent); margin-left: 0.5rem; }
+    button.primary {
+      background: var(--accent);
+      color: white;
+    }
+    button.secondary {
+      background: var(--glass);
+      color: var(--accent);
+      margin-left: 0.5rem;
+    }
 
     .result {
       margin-top: 1rem;
@@ -77,13 +88,13 @@
     .real {
       background: #eafaf0;
       color: var(--accent-2);
-      border: 1px solid rgba(45,189,110,0.12);
+      border: 1px solid rgba(45, 189, 110, 0.12);
     }
 
     .fake {
       background: #fff2f2;
       color: var(--danger);
-      border: 1px solid rgba(224,61,61,0.08);
+      border: 1px solid rgba(224, 61, 61, 0.08);
     }
 
     .confidence {
@@ -96,22 +107,30 @@
 <body>
   <div class="container">
     <h1>Fake News Detector</h1>
-    <p class="lead">Paste an article or upload a file (TXT, PDF, DOC/DOCX) to check if it’s real or fake.</p>
+    <p class="lead">
+      Paste an article or upload a file (TXT, PDF, DOC/DOCX) to check if it’s
+      real or fake.
+    </p>
 
     <!-- Text Input -->
     <textarea id="text-input" placeholder="Paste article text here..."></textarea>
-    <br>
+    <br />
     <button id="check-btn" class="primary">Check Text</button>
     <button id="clear-btn" class="secondary">Clear</button>
 
-    <hr>
+    <hr />
 
     <!-- File Upload -->
-    <input type="file" id="file-input" accept=".txt,.pdf,.doc,.docx">
+    <input
+      type="file"
+      id="file-input"
+      accept=".txt,.pdf,.doc,.docx"
+      aria-label="Upload article file"
+    />
     <button id="upload-btn" class="primary">Upload & Analyze</button>
 
     <!-- Result -->
-    <div id="result" class="result" style="display:none;">
+    <div id="result" class="result" style="display: none">
       <span id="prediction-text"></span>
       <span class="confidence" id="confidence-text"></span>
     </div>
@@ -127,51 +146,61 @@
     const predictionText = document.getElementById("prediction-text");
     const confidenceText = document.getElementById("confidence-text");
 
-    function showResult(prediction, confidence){
-      resultDiv.style.display = 'flex';
-      resultDiv.className = 'result ' + (prediction.toLowerCase().includes('real') ? 'real':'fake');
+    function showResult(prediction, confidence) {
+      resultDiv.style.display = "flex";
+      resultDiv.className = "result " + (prediction.toLowerCase().includes("real") ? "real" : "fake");
       predictionText.textContent = prediction;
-      confidenceText.textContent = confidence ? `Confidence: ${Math.round(confidence*100)}%` : '';
+      confidenceText.textContent = confidence ? `Confidence: ${Math.round(confidence * 100)}%` : "";
     }
 
-    checkBtn.addEventListener('click', async ()=>{
+    checkBtn.addEventListener("click", async () => {
       const text = textInput.value.trim();
-      if(!text){ alert("Enter text to analyze"); return; }
-      checkBtn.disabled = true; checkBtn.textContent = "Checking...";
-      try{
-        const resp = await fetch('/predict',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({text})
+      if (!text) {
+        alert("Enter text to analyze");
+        return;
+      }
+      checkBtn.disabled = true;
+      checkBtn.textContent = "Checking...";
+      try {
+        const resp = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
         });
         const data = await resp.json();
         showResult(data.prediction || "Error", data.probability);
-      }catch(e){
+      } catch (e) {
         showResult("Network Error", null);
-      }finally{
-        checkBtn.disabled = false; checkBtn.textContent = "Check Text";
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.textContent = "Check Text";
       }
     });
 
-    clearBtn.addEventListener('click', ()=>{
-      textInput.value = '';
-      resultDiv.style.display = 'none';
+    clearBtn.addEventListener("click", () => {
+      textInput.value = "";
+      resultDiv.style.display = "none";
     });
 
-    uploadBtn.addEventListener('click', async ()=>{
-      if(fileInput.files.length === 0){ alert("Select a file"); return; }
+    uploadBtn.addEventListener("click", async () => {
+      if (fileInput.files.length === 0) {
+        alert("Select a file");
+        return;
+      }
       const file = fileInput.files[0];
       const formData = new FormData();
-      formData.append('file', file);
-      uploadBtn.disabled = true; uploadBtn.textContent = "Uploading...";
-      try{
-        const resp = await fetch('/upload',{method:'POST', body:formData});
+      formData.append("file", file);
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "Uploading...";
+      try {
+        const resp = await fetch("/upload", { method: "POST", body: formData });
         const data = await resp.json();
         showResult(data.prediction || "Error", data.probability);
-      }catch(e){
+      } catch (e) {
         showResult("Network Error", null);
-      }finally{
-        uploadBtn.disabled = false; uploadBtn.textContent = "Upload & Analyze";
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "Upload & Analyze";
       }
     });
   </script>
