@@ -1,83 +1,59 @@
-from flask import Flask, request, jsonify, render_template
-import joblib, os, numpy as np
-from werkzeug.utils import secure_filename
-import PyPDF2, docx
-import webbrowser
+import os
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+import joblib
 
-# --- Config ---
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx'}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, '..', 'data')
 
-app = Flask(__name__, template_folder="templates")
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# 1. Load CSVs with relative paths
+true_df = pd.read_csv(os.path.join(DATA_DIR, 'True.csv'))
+fake_df = pd.read_csv(os.path.join(DATA_DIR, 'Fake.csv'))
 
-# Create uploads folder if missing
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# 2. Add labels
+true_df['label'] = 1  # Real
+fake_df['label'] = 0  # Fake
 
-# --- Load model ---
-vectorizer = joblib.load("vectorizer.joblib")
-model = joblib.load("fake_news_model.joblib")
+# 3. Balance datasets
+min_len = min(len(true_df), len(fake_df))
+true_df = true_df.sample(min_len, random_state=42)
+fake_df = fake_df.sample(min_len, random_state=42)
 
-# --- Helpers ---
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.',1)[1].lower() in ALLOWED_EXTENSIONS
+# 4. Combine and shuffle
+df = pd.concat([true_df, fake_df], axis=0).sample(frac=1, random_state=42).reset_index(drop=True)
 
-def extract_text_from_file(filepath):
-    ext = filepath.rsplit('.',1)[1].lower()
-    text = ''
-    if ext == 'txt':
-        with open(filepath, 'r', encoding='utf-8') as f:
-            text = f.read()
-    elif ext == 'pdf':
-        reader = PyPDF2.PdfReader(filepath)
-        text = ' '.join([page.extract_text() for page in reader.pages if page.extract_text()])
-    elif ext in ['doc','docx']:
-        doc = docx.Document(filepath)
-        text = ' '.join([p.text for p in doc.paragraphs])
-    return text
+# 5. Combine title+text if available
+if 'title' in df.columns:
+    df['content'] = df['title'].fillna('') + ' ' + df['text'].fillna('')
+else:
+    df['content'] = df['text'].fillna('')
 
-def predict_text(text):
-    X_vec = vectorizer.transform([text])
-    pred = model.predict(X_vec)[0]
-    prob = float(np.max(model.predict_proba(X_vec)[0])) if hasattr(model,"predict_proba") else None
-    label = "Real News" if int(pred)==1 else "Fake News"
-    resp = {"prediction": label}
-    if prob: resp["probability"] = prob
-    return resp
+X = df['content']
+y = df['label']
 
-# --- Routes ---
-@app.route("/")
-def index():
-    return render_template("index.html")
+# 6. Split dataset
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42
+)
 
-@app.route("/predict", methods=["POST"])
-def predict():
-    data = request.get_json(force=True)
-    text = data.get("text", "").strip()
-    if not text:
-        return jsonify({"error":"Empty text"}), 400
-    return jsonify(predict_text(text))
+# 7. TF-IDF vectorization
+vectorizer = TfidfVectorizer(
+    stop_words='english',
+    max_df=0.7,
+    max_features=10000,
+    ngram_range=(1, 2)
+)
+X_train_vec = vectorizer.fit_transform(X_train)
+X_test_vec = vectorizer.transform(X_test)
 
-@app.route("/upload", methods=["POST"])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({"error":"No file part"}), 400
-    file = request.files['file']
-    if file.filename=='' or not allowed_file(file.filename):
-        return jsonify({"error":"File type not allowed"}), 400
+# 8. Train logistic regression model
+model = LogisticRegression(max_iter=2000, C=2.0)
+model.fit(X_train_vec, y_train)
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-    text = extract_text_from_file(filepath)
+# 9. Save artifacts to backend directory
+joblib.dump(vectorizer, os.path.join(BASE_DIR, 'vectorizer.joblib'))
+joblib.dump(model, os.path.join(BASE_DIR, 'fake_news_model.joblib'))
 
-    if not text.strip():
-        return jsonify({"error":"No readable text in file"}), 400
-
-    return jsonify(predict_text(text))
-
-# --- Run server ---
-if __name__ == "__main__":
-    webbrowser.open("http://127.0.0.1:5000")  # automatically opens browser
-    app.run(host="127.0.0.1", port=5000, debug=True)
+print("Model training complete and saved in backend folder!")
